@@ -24,3 +24,16 @@ or this line in `~/.bashrc` (to be available only in interactive shells):
 ```
 export PATH="$HOME/.local/bin:$PATH"
 ```
+
+Source the modified file. or open a new terminal, or log-out and log-in to your account for the change to take effect.
+
+## Usage Guide
+
+#### Command
+
+`origin <command>` will print the absolute (real) path of the command, the package providing it, and an estimation of the reason why the package is present on the system.
+
+
+#### File
+
+`origin <file>` will print the absolute (real) path of the file , the package providing it, and an estimation of the reason why the package is present on the system.
