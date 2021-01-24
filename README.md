@@ -1,3 +1,8 @@
+## Donations
+
+If my work helped you, please consider chipping in at: https://www.patreon.com/adamency
+
+My most sincere thanks.
 
 # Origin
 
