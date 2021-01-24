@@ -1,0 +1,206 @@
+#!/bin/bash
+
+dependencies=("which" "realpath")
+system_pkgman=()
+pkgmans=("apt" "pacman" "dnf" "yum")
+maintained=false
+is_not_file=false
+
+# Returns "true" if $1 can be run (works for alias, function, builtin, command in path)
+command_exists()
+{
+    command -v "${1}" 1>/dev/null 2>&1
+}
+
+# Returns "true" only if $1 is found in path (filters out aliases, functions, builtins)
+is_command()
+{
+    which "${1}" 1>/dev/null 2>&1
+}
+
+check_dependencies()
+{
+    local missing_dependency=false
+
+    for dependency in "${dependencies[@]}"
+    do
+        if ! command_exists "${dependency}"
+        then
+            echo "The following dependency is needed '${dependency}'"
+            missing_dependency=true
+        fi
+    done
+
+    if "${missing_dependency}"
+    then
+        exit 1
+    fi
+}
+
+check_pkgman()
+{
+    local executables=()
+
+    for pkgman in "${pkgmans[@]}"
+    do
+        # Check if package manager is on system
+        if command_exists "${pkgman}"
+        then
+            # Check for symbolic links to the same executable (dnf and yum)
+            local realpath="$(realpath "$(which "${pkgman}")")"
+            if [[ ! "${executables[@]}" =~ "${realpath}" ]]
+            then
+                executables+=("${realpath}")
+                # Add to list of package managers on the system
+                system_pkgman+=("${pkgman}")
+            fi
+        fi
+    done
+
+    if [ ${#system_pkgman[@]} -ne 1 ]
+    then
+      echo "Package manager unsupported (or multiple ones found)"
+      echo "Supported Package Managers: ${pkgmans[@]}"
+      echo "Package Managers found: ${system_pkgman[@]}"
+      exit 2
+    fi
+}
+
+check_builtin_alias_function()
+{
+    if ! [ -e "${1}" ]
+    then
+        case "$(type -t "${1}")" in
+            "builtin")
+                if ! is_command "${1}"
+                then
+                    echo "[=> ${1} <=] is a shell builtin. Aborting..."
+                    exit 3
+                fi
+            ;;
+            "alias")
+                if ! is_command "${1}"
+                then
+                    echo "[=> ${1} <=] is a alias. Aborting..."
+                    exit 3
+                fi
+            ;;
+            "function")
+                if ! is_command "${1}"
+                then
+                    echo "[=> ${1} <=] is a function. Aborting..."
+                    exit 3
+                fi
+            ;;
+            "file")
+            ;;
+            *)
+                echo "[=> ${1} <=] NOT FOUND. Aborting..."
+                exit 3
+            ;;
+        esac
+    fi
+}
+
+check_maintained()
+{
+    case ${system_pkgman[0]} in
+        ${pkgmans[0]})
+                dpkg -S "${1}" 1>/dev/null 2>&1 && maintained=true
+            ;;
+        ${pkgmans[1]})
+                pacman -Qqo "${1}" 1>/dev/null 2>&1 && maintained=true
+            ;;
+        ${pkgmans[2]})
+            ;;
+        ${pkgmans[3]})
+            ;;
+    esac
+}
+
+find_origin()
+{
+    local file_or_command=false
+    local realpath
+    local provider_package
+
+    # Differentiate case between path to a file and command in path
+    if [ -e "${1}" ]
+    then
+        realpath="$(realpath "${1}")" 
+    else
+        is_not_file=true
+        realpath="$(realpath "$(which "${1}")")" 
+    fi
+
+    case ${system_pkgman[0]} in
+        ${pkgmans[0]})
+            echo "Your package manager is apt"
+            echo
+            dependencies=("dpkg" "aptitude")
+            check_dependencies 
+
+            check_maintained "${realpath}"
+
+            if $maintained
+            then
+                provider_package="$(dpkg -S "${realpath}" | cut -d ":" -f 1)"
+                origin_package="$(aptitude why "${provider_package}")"
+            fi
+            ;;
+        ${pkgmans[1]})
+            echo "Your package manager is pacman"
+            echo
+            dependencies=("pactree")
+            check_dependencies 
+
+            check_maintained "${realpath}"
+
+            if $maintained
+            then
+                provider_package="$(pacman -Qqo "${realpath}")"
+                origin_package="$( (pacman -Qqe ; pactree -ru "${provider_package}") | sort | uniq -d)"
+            fi
+            ;;
+        ${pkgmans[2]})
+            echo "Your package manager is dnf"
+            echo "Your package manager is unsupported"
+            exit 4
+            ;;
+        ${pkgmans[3]})
+            echo "Your package manager is yum"
+            echo "Your package manager is unsupported"
+            exit 5
+            ;;
+    esac
+
+    if ${is_not_file}
+    then
+        echo "Command [=> ${1} <=]  is:"
+    else
+        echo "File [=> ${1} <=]  is:"
+    fi
+
+    echo
+    echo "- located at [ ${realpath} ]"
+
+    if ${maintained}
+    then
+        echo "- provided by package [ ${provider_package} ]"
+        echo "- on system because:"
+        echo "${origin_package}" | sed 's/^/    /g'
+    else
+        echo "- Unmaintained by system package manager"
+    fi
+
+}
+
+check_dependencies
+
+check_pkgman
+
+check_builtin_alias_function "$@"
+
+find_origin "$@"
+
+
