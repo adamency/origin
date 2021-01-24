@@ -8,6 +8,7 @@ Gather package management info for a command or a file and print its estimated o
 ## Installation
 
 ```
+mkdir -p ~/.local/bin
 cp origin ~/.local/bin/
 chmod +x ~/.local/bin/origin 
 ```
